@@ -1,0 +1,38 @@
+[{
+  "_id": {
+    "$oid": "68f2602031abfc2a7671858e"
+  },
+  "vehicle_id": "ebike_001",
+  "timestamp": {
+    "$date": "2025-03-20T08:00:00.000Z"
+  },
+  "location": {
+    "type": "Point",
+    "coordinates": [
+      103.6775,
+      1.3462
+    ]
+  },
+  "battery_level": 85,
+  "speed": 12.5,
+  "vehicle_status": "in_use"
+},
+{
+  "_id": {
+    "$oid": "68f2602031abfc2a7671858f"
+  },
+  "vehicle_id": "ebike_002",
+  "timestamp": {
+    "$date": "2025-03-20T08:05:00.000Z"
+  },
+  "location": {
+    "type": "Point",
+    "coordinates": [
+      103.678,
+      1.3465
+    ]
+  },
+  "battery_level": 60,
+  "speed": 0,
+  "vehicle_status": "available"
+}]

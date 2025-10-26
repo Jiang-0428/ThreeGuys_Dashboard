@@ -20,350 +20,220 @@ def qualify(sql: str) -> str:
 CONFIG = {
     "postgres": {
         "enabled": True,
-        "uri": os.getenv("PG_URI", "postgresql+psycopg2://postgres:password@localhost:5432/postgres"),  # Will read from your .env file
+        "uri": os.getenv("PG_URI", "postgresql+psycopg2://postgres:yyqx1128@localhost:5432/campusmove"),
         "queries": {
-            #CHANGE: Replace all the following Postgres queries with your own queries, for each user you identified for your project's Information System
-            # Each query must have a unique name, an SQL string, a chart specification, tags (for user roles), and optional params (parameters)
-            # :doctor_id, :nurse_id, :patient_name, etc., are placeholders. Their values will come from the dashboard sidebar.
-            #User 1: DOCTORS 
-            "Doctor: patients under my care (table)": {
+            # User 1: STUDENT/STAFF
+            "Student: Available bikes near location (table)": {
                 "sql": """
-                    SELECT p.patient_id, p.name AS patient, p.age, p.room_no
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id 
-                    ORDER BY p.name;
+                    SELECT b.bike_id, b.bike_type, b.battery_level, bs.station_name, bs.location
+                    FROM {S}.bike b
+                    JOIN {S}.bike_station bs ON b.current_station_id = bs.station_id 
+                    JOIN {S}.vehicle v ON b.bike_id = v.vehicle_id
+                    WHERE v.status = 'available'
+                    AND bs.location LIKE :location_pattern
+                    ORDER BY bs.station_name;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
+                "tags": ["student_staff"],
+                "params": ["location_pattern"]
             },
-            "Doctor: most recent treatment per my patient (table)": {
+            
+            "Student: My rental history (table)": {
                 "sql": """
-                    SELECT p.name AS patient,
-                           (SELECT MAX(t.treatment_time)
-                              FROM {S}.treatments t
-                              WHERE t.patient_id = p.patient_id) AS last_treatment
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id
-                    ORDER BY last_treatment DESC NULLS LAST;
+                    SELECT rt.rental_id, rt.start_time, rt.end_time, 
+                           start_st.station_name as start_station,
+                           end_st.station_name as end_station,
+                           rt.fare
+                    FROM {S}.rental_transaction rt
+                    JOIN {S}.bike_station start_st ON rt.start_station_id = start_st.station_id
+                    LEFT JOIN {S}.bike_station end_st ON rt.end_station_id = end_st.station_id
+                    WHERE rt.user_id = :user_id
+                    ORDER BY rt.start_time DESC;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
-            },
-            "Doctor: high-risk (age > threshold) under my care (bar)": {
-                "sql": """
-                    SELECT p.name AS patient, p.age
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id
-                      AND p.age > :age_threshold
-                    ORDER BY p.age DESC;
-                """,
-                "chart": {"type": "bar", "x": "patient", "y": "age"},
-                "tags": ["doctor"],
-                "params": ["doctor_id", "age_threshold"]
-            },
-            "Doctor: patients with NO treatment today (table)": {
-                "sql": """
-                    SELECT p.name, p.room_no
-                    FROM {S}.patients p
-                    WHERE p.doctor_id = :doctor_id
-                      AND NOT EXISTS (
-                        SELECT 1
-                        FROM {S}.treatments t
-                        WHERE t.patient_id = p.patient_id
-                          AND t.treatment_time::date = CURRENT_DATE
-                      );
-                """,
-                "chart": {"type": "table"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
-            },
-            "Doctor: treatments by type for my patients (bar)": {
-                "sql": """
-                    SELECT t.treatment_type, COUNT(*)::int AS times_given
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON p.patient_id = t.patient_id
-                    WHERE p.doctor_id = :doctor_id
-                    GROUP BY t.treatment_type
-                    ORDER BY times_given DESC;
-                """,
-                "chart": {"type": "bar", "x": "treatment_type", "y": "times_given"},
-                "tags": ["doctor"],
-                "params": ["doctor_id"]
+                "tags": ["student_staff"],
+                "params": ["user_id"]
             },
 
-            #User 2: NURSES 
-            "Nurse: today’s tasks (treatments to administer) (table)": {
+            "Student: Bus routes and schedules (table)": {
                 "sql": """
-                    SELECT p.name AS patient, t.treatment_type, t.treatment_time
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON t.patient_id = p.patient_id
-                    WHERE t.nurse_id = :nurse_id
-                      AND t.treatment_time::date = CURRENT_DATE
-                    ORDER BY t.treatment_time;
+                    SELECT rs.route_id, br.route_name, rs.departure_time, rs.direction, rs.driver_name
+                    FROM {S}.route_schedule rs
+                    JOIN {S}.bus_route br ON rs.route_id = br.route_id
+                    WHERE rs.departure_time > CURRENT_TIMESTAMP
+                    ORDER BY rs.departure_time
+                    LIMIT 10;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["nurse"],
-                "params": ["nurse_id"]
-            },
-            "Nurse: patients with NO treatment yet today (table)": {
-                "sql": """
-                    SELECT p.name, p.room_no
-                    FROM {S}.patients p
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM {S}.treatments t
-                        WHERE t.patient_id = p.patient_id
-                          AND t.treatment_time::date = CURRENT_DATE
-                    )
-                    ORDER BY p.room_no, p.name;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["nurse"]
-            },
-            "Nurse: medicines running low (bar)": {
-                "sql": """
-                    SELECT m.name, m.quantity
-                    FROM {S}.medicine_stock m
-                    WHERE m.quantity < :med_low_threshold
-                    ORDER BY m.quantity ASC;
-                """,
-                "chart": {"type": "bar", "x": "name", "y": "quantity"},
-                "tags": ["nurse"],
-                "params": ["med_low_threshold"]
+                "tags": ["student_staff"]
             },
 
-            #User 3: PHARMACISTS 
-            "Pharmacist: medicines to reorder (bar)": {
+            # User 2: BUS DRIVER
+            "Driver: Today's assigned schedules (table)": {
                 "sql": """
-                    SELECT m.name, m.quantity
-                    FROM {S}.medicine_stock m
-                    WHERE m.quantity < :reorder_threshold
-                    ORDER BY m.quantity ASC;
-                """,
-                "chart": {"type": "bar", "x": "name", "y": "quantity"},
-                "tags": ["pharmacist"],
-                "params": ["reorder_threshold"]
-            },
-            "Pharmacist: top 5 medicines this month (bar)": {
-                "sql": """
-                    SELECT t.treatment_type AS medicine, COUNT(*)::int AS times_given
-                    FROM {S}.treatments t
-                    WHERE t.treatment_time >= date_trunc('month', CURRENT_DATE)
-                    GROUP BY t.treatment_type
-                    ORDER BY times_given DESC
-                    LIMIT 5;
-                """,
-                "chart": {"type": "bar", "x": "medicine", "y": "times_given"},
-                "tags": ["pharmacist"]
-            },
-            "Pharmacist: which nurse gave most medicines today (table)": {
-                "sql": """
-                    SELECT n.name, COUNT(t.treatment_id)::int AS total
-                    FROM {S}.nurses n
-                    JOIN {S}.treatments t ON t.nurse_id = n.nurse_id
-                    WHERE t.treatment_time::date = CURRENT_DATE
-                    GROUP BY n.name
-                    ORDER BY total DESC
-                    LIMIT 1;
+                    SELECT schedule_id, route_id, departure_time, direction, driver_name
+                    FROM {S}.route_schedule
+                    WHERE driver_name = :driver_name 
+                    AND DATE(departure_time) = CURRENT_DATE
+                    ORDER BY departure_time;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["pharmacist"]
-            },
-            "Pharmacist: medicines unused in last N days (table)": {
-                "sql": """
-                    SELECT m.name
-                    FROM {S}.medicine_stock m
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM {S}.treatments t
-                        WHERE t.treatment_type = m.name
-                          AND t.treatment_time >= NOW() - (:days || ' days')::interval
-                    )
-                    ORDER BY m.name;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["pharmacist"],
-                "params": ["days"]
+                "tags": ["bus_driver"],
+                "params": ["driver_name"]
             },
 
-            # User 4: FAMILY/GUARDIANS 
-            "Family: last treatment for my relative (table)": {
+            "Driver: Route completion status (table)": {
                 "sql": """
-                    SELECT t.treatment_type, t.treatment_time, n.name AS nurse
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON t.patient_id = p.patient_id
-                    LEFT JOIN {S}.nurses n ON t.nurse_id = n.nurse_id
-                    WHERE p.name = :patient_name
-                    ORDER BY t.treatment_time DESC
-                    LIMIT 1;
+                    SELECT schedule_id, route_id, departure_time, status
+                    FROM {S}.route_schedule
+                    WHERE driver_name = :driver_name 
+                    AND DATE(departure_time) = CURRENT_DATE
+                    ORDER BY departure_time;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["guardian"],
-                "params": ["patient_name"]
-            },
-            "Family: which doctor is assigned to my relative? (table)": {
-                "sql": """
-                    SELECT p.name AS patient, d.name AS doctor, d.specialization
-                    FROM {S}.patients p
-                    JOIN {S}.doctors d ON p.doctor_id = d.doctor_id
-                    WHERE p.name = :patient_name;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["guardian"],
-                "params": ["patient_name"]
-            },
-            "Family: total treatments this month for my relative (table)": {
-                "sql": """
-                    SELECT COUNT(*)::int AS treatments_this_month
-                    FROM {S}.treatments t
-                    JOIN {S}.patients p ON t.patient_id = p.patient_id
-                    WHERE p.name = :patient_name
-                      AND t.treatment_time >= date_trunc('month', CURRENT_DATE);
-                """,
-                "chart": {"type": "table"},
-                "tags": ["guardian"],
-                "params": ["patient_name"]
+                "tags": ["bus_driver"],
+                "params": ["driver_name"]
             },
 
-            # User 5: MANAGERS 
-            "Mgr: total patients & average age (table)": {
+            # User 3: SYSTEM ADMIN
+            "Admin: Bike distribution by station (bar)": {
                 "sql": """
-                    SELECT COUNT(*)::int AS total_patients, AVG(age)::numeric(10,1) AS avg_age
-                    FROM {S}.patients;
+                    SELECT bs.station_name, COUNT(*) as available_bikes
+                    FROM {S}.bike b
+                    JOIN {S}.bike_station bs ON b.current_station_id = bs.station_id
+                    JOIN {S}.vehicle v ON b.bike_id = v.vehicle_id
+                    WHERE v.status = 'available'
+                    GROUP BY bs.station_name
+                    ORDER BY available_bikes DESC;
+                """,
+                "chart": {"type": "bar", "x": "station_name", "y": "available_bikes"},
+                "tags": ["system_admin"]
+            },
+
+            "Admin: User travel statistics (table)": {
+                "sql": """
+                    SELECT u.role, COUNT(rt.rental_id) as total_rentals, 
+                           AVG(rt.fare) as avg_fare, SUM(rt.fare) as total_revenue
+                    FROM {S}.app_user u
+                    LEFT JOIN {S}.rental_transaction rt ON u.user_id = rt.user_id
+                    GROUP BY u.role
+                    ORDER BY total_rentals DESC;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["manager"]
+                "tags": ["system_admin"]
             },
-            "Mgr: patients per doctor (bar)": {
+
+            "Admin: Peak rental hours (line)": {
                 "sql": """
-                    SELECT d.name AS doctor, COUNT(*)::int AS num_patients
-                    FROM {S}.doctors d
-                    LEFT JOIN {S}.patients p ON d.doctor_id = p.doctor_id
-                    GROUP BY d.name
-                    ORDER BY num_patients DESC;
+                    SELECT EXTRACT(HOUR FROM start_time) as hour_of_day, 
+                           COUNT(*) as rental_count
+                    FROM {S}.rental_transaction
+                    GROUP BY hour_of_day
+                    ORDER BY hour_of_day;
                 """,
-                "chart": {"type": "bar", "x": "doctor", "y": "num_patients"},
-                "tags": ["manager"]
+                "chart": {"type": "line", "x": "hour_of_day", "y": "rental_count"},
+                "tags": ["system_admin"]
             },
-            "Mgr: treatments in last N days (table)": {
+
+            # User 4: MAINTENANCE TECHNICIAN
+            "Tech: Bikes with low battery (table)": {
                 "sql": """
-                    SELECT COUNT(*)::int AS total_treatments
-                    FROM {S}.treatments
-                    WHERE treatment_time >= NOW() - (:days || ' days')::interval;
-                """,
-                "chart": {"type": "table"},
-                "tags": ["manager"],
-                "params": ["days"]
-            },
-            "Mgr: rooms currently occupied (table)": {
-                "sql": """
-                    SELECT DISTINCT p.room_no
-                    FROM {S}.patients p
-                    ORDER BY p.room_no;
+                    SELECT b.bike_id, b.bike_type, b.battery_level, bs.station_name
+                    FROM {S}.bike b
+                    JOIN {S}.bike_station bs ON b.current_station_id = bs.station_id
+                    WHERE b.battery_level < :battery_threshold
+                    AND b.is_electric = true
+                    ORDER BY b.battery_level ASC;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["manager"]
+                "tags": ["maintenance_tech"],
+                "params": ["battery_threshold"]
             },
-            "Mgr: doctor with oldest patients (table)": {
+
+            "Tech: Vehicles needing maintenance (table)": {
                 "sql": """
-                    SELECT d.name, MAX(p.age) AS oldest_patient_age
-                    FROM {S}.doctors d
-                    JOIN {S}.patients p ON d.doctor_id = p.doctor_id
-                    GROUP BY d.name
-                    ORDER BY oldest_patient_age DESC
-                    LIMIT 1;
+                    SELECT v.vehicle_id, v.type, v.status, v.in_service_date
+                    FROM {S}.vehicle v
+                    WHERE v.status = 'maintenance'
+                    ORDER BY v.in_service_date;
                 """,
                 "chart": {"type": "table"},
-                "tags": ["manager"]
+                "tags": ["maintenance_tech"]
+            },
+
+            "Tech: Maintenance history (table)": {
+                "sql": """
+                    SELECT mr.record_id, v.vehicle_id, t.name as technician, 
+                           mr.maintenance_type, mr.start_date, mr.end_date, mr.cost
+                    FROM {S}.maintenance_record mr
+                    JOIN {S}.vehicle v ON mr.vehicle_id = v.vehicle_id
+                    JOIN {S}.technician t ON mr.technician_id = t.technician_id
+                    ORDER BY mr.start_date DESC
+                    LIMIT 10;
+                """,
+                "chart": {"type": "table"},
+                "tags": ["maintenance_tech"]
             }
         }
     },
 
     "mongo": {
         "enabled": True,
-        "uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),  # Will read from the .env file
-        "db_name": os.getenv("MONGO_DB", "eldercare"),               # Will read from the .env file
+        "uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),
+        "db_name": os.getenv("MONGO_DB", "smart_old_age_home"),
         
-        # CHANGE: Just like above, replace all the following Mongo queries with your own, for the different users you identified
         "queries": {
-            "TS: Hourly avg heart rate (resident 501, last 24h)": {
-                "collection": "bracelet_readings_ts",
+            "Real-time: Vehicle distribution by zone (bar)": {
+                "collection": "vehicle_sensor_streams",
                 "aggregate": [
-                    {"$match": {
-                        "meta.resident_id": 501,
-                        "ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=24)}
-                    }},
-                    {"$project": {
-                        "hour": {"$dateTrunc": {"date": "$ts", "unit": "hour"}},
-                        "hr": "$heart_rate_bpm"
-                    }},
-                    {"$group": {"_id": "$hour", "avg_hr": {"$avg": "$hr"}, "n": {"$count": {}}}},
+                    {"$match": {"timestamp": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=1)}}},
+                    {"$group": {"_id": "$location.zone", "count": {"$count": {}}}},
+                    {"$sort": {"count": -1}}
+                ],
+                "chart": {"type": "bar", "x": "_id", "y": "count"}
+            },
+
+            "Analytics: User travel patterns by hour (line)": {
+                "collection": "user_location_trails",
+                "aggregate": [
+                    {"$match": {"timestamp": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)}}},
+                    {"$group": {"_id": {"$hour": "$timestamp"}, "trips": {"$count": {}}}},
                     {"$sort": {"_id": 1}}
                 ],
-                "chart": {"type": "line", "x": "_id", "y": "avg_hr"}
+                "chart": {"type": "line", "x": "_id", "y": "trips"}
             },
 
-            "TS: Exceedance counts (SpO2 < 92, last 7 days) by resident": {
-                "collection": "bracelet_readings_ts",
+            "Operations: Bus schedule performance (table)": {
+                "collection": "route_schedule_logs",
                 "aggregate": [
-                    {"$match": {
-                        "ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)},
-                        "spo2_pct": {"$lt": 92}
-                    }},
-                    {"$group": {"_id": "$meta.resident_id", "hits": {"$count": {}}}},
-                    {"$sort": {"hits": -1}}
-                ],
-                "chart": {"type": "bar", "x": "_id", "y": "hits"}
-            },
-
-            "Telemetry: Latest reading per device": {
-                "collection": "bracelet_data",
-                "aggregate": [
-                    {"$sort": {"ts": -1, "_id": -1}},
-                    {"$group": {"_id": "$device_id", "doc": {"$first": "$$ROOT"}}},
-                    {"$replaceRoot": {"newRoot": "$doc"}},
-                    {"$project": {
-                        "_id": 0, "device_id": 1, "resident_id": 1, "ts": 1,
-                        "hr": "$metrics.heart_rate_bpm", "spo2": "$metrics.spo2_pct",
-                        "status": 1
-                    }}
+                    {"$match": {"date": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=30)}}},
+                    {"$group": {"_id": "$route_id", "on_time": {"$avg": "$on_time_percentage"}}},
+                    {"$sort": {"on_time": -1}},
+                    {"$limit": 10}
                 ],
                 "chart": {"type": "table"}
             },
 
-            "Telemetry: Battery status distribution": {
-                "collection": "bracelet_data",
+            "Sensor: Vehicle battery status distribution (pie)": {
+                "collection": "vehicle_sensor_data",
                 "aggregate": [
                     {"$project": {
-                        "battery": {"$ifNull": ["$battery_pct", None]},
-                        "bucket": {
+                        "battery_range": {
                             "$switch": {
                                 "branches": [
-                                    {"case": {"$gte": ["$battery_pct", 80]}, "then": "80–100"},
-                                    {"case": {"$gte": ["$battery_pct", 60]}, "then": "60–79"},
-                                    {"case": {"$gte": ["$battery_pct", 40]}, "then": "40–59"},
-                                    {"case": {"$gte": ["$battery_pct", 20]}, "then": "20–39"},
+                                    {"case": {"$gte": ["$battery_level", 80]}, "then": "80-100%"},
+                                    {"case": {"$gte": ["$battery_level", 60]}, "then": "60-79%"},
+                                    {"case": {"$gte": ["$battery_level", 40]}, "then": "40-59%"},
+                                    {"case": {"$gte": ["$battery_level", 20]}, "then": "20-39%"},
                                 ],
-                                "default": "<20 or null"
+                                "default": "0-19%"
                             }
                         }
                     }},
-                    {"$group": {"_id": "$bucket", "cnt": {"$count": {}}}},
-                    {"$sort": {"cnt": -1}}
+                    {"$group": {"_id": "$battery_range", "count": {"$count": {}}}},
+                    {"$sort": {"count": -1}}
                 ],
-                "chart": {"type": "pie", "names": "_id", "values": "cnt"}
-            },
-
-            "TS Treemap: readings count by resident and device (last 24h)": {
-                "collection": "bracelet_readings_ts",
-                "aggregate": [
-                    {"$match": {"ts": {"$gte": dt.datetime.utcnow() - dt.timedelta(hours=24)}}},
-                    {"$group": {"_id": {"resident": "$meta.resident_id", "device": "$meta.device_id"}, "cnt": {"$count": {}}}},
-                    {"$project": {"resident": "$_id.resident", "device": "$_id.device", "cnt": 1, "_id": 0}}
-                ],
-                "chart": {"type": "treemap", "path": ["resident", "device"], "values": "cnt"}
+                "chart": {"type": "pie", "names": "_id", "values": "count"}
             }
         }
     }

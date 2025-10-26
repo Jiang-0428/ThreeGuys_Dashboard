@@ -1,0 +1,36 @@
+[{
+  "_id": {
+    "$oid": "68f2603231abfc2a76718592"
+  },
+  "schedule_id": "schedule_001",
+  "route_id": "route_A",
+  "driver_id": "driver_wang",
+  "scheduled_time": {
+    "$date": "2025-03-20T08:00:00.000Z"
+  },
+  "actual_time": {
+    "$date": "2025-03-20T08:03:00.000Z"
+  },
+  "delay_minutes": 3,
+  "passenger_count": 42,
+  "status": "completed",
+  "notes": "Minor traffic delay"
+},
+{
+  "_id": {
+    "$oid": "68f2603231abfc2a76718593"
+  },
+  "schedule_id": "schedule_002",
+  "route_id": "route_B",
+  "driver_id": "driver_li",
+  "scheduled_time": {
+    "$date": "2025-03-20T08:15:00.000Z"
+  },
+  "actual_time": {
+    "$date": "2025-03-20T08:15:00.000Z"
+  },
+  "delay_minutes": 0,
+  "passenger_count": 35,
+  "status": "completed",
+  "notes": "On time"
+}]
