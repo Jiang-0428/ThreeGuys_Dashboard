@@ -178,11 +178,11 @@ CONFIG = {
     },
 
     "mongo": {
-        "enabled": True,
-        "uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),
-        "db_name": os.getenv("MONGO_DB", "smart_old_age_home"),
-        
-        "queries": {
+       "enabled": True,
+       "uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),
+       "db_name": os.getenv("MONGO_DB", "campusmove_analytics"),
+    
+       "queries": {
             "Real-time: Vehicle distribution by zone (bar)": {
                 "collection": "vehicle_sensor_streams",
                 "aggregate": [
@@ -196,9 +196,9 @@ CONFIG = {
             "Analytics: User travel patterns by hour (line)": {
                 "collection": "user_location_trails",
                 "aggregate": [
-                    {"$match": {"timestamp": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)}}},
-                    {"$group": {"_id": {"$hour": "$timestamp"}, "trips": {"$count": {}}}},
-                    {"$sort": {"_id": 1}}
+                   {"$match": {"timestamp": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)}}},
+                   {"$group": {"_id": {"$hour": "$timestamp"}, "trips": {"$count": {}}}},
+                   {"$sort": {"_id": 1}}
                 ],
                 "chart": {"type": "line", "x": "_id", "y": "trips"}
             },
@@ -213,7 +213,7 @@ CONFIG = {
                 ],
                 "chart": {"type": "table"}
             },
-
+   
             "Sensor: Vehicle battery status distribution (pie)": {
                 "collection": "vehicle_sensor_data",
                 "aggregate": [
@@ -234,6 +234,17 @@ CONFIG = {
                     {"$sort": {"count": -1}}
                 ],
                 "chart": {"type": "pie", "names": "_id", "values": "count"}
+            },
+
+            "Analytics: Popular travel routes (bar)": {
+                "collection": "user_location_trails",
+                "aggregate": [
+                    {"$match": {"timestamp": {"$gte": dt.datetime.utcnow() - dt.timedelta(days=7)}}},
+                    {"$group": {"_id": {"start": "$start_location", "end": "$end_location"}, "count": {"$count": {}}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 10}
+                ],
+                "chart": {"type": "bar", "x": "_id", "y": "count"}
             }
         }
     }
